@@ -408,28 +408,32 @@ module hex_panel(
 module _honeycomb(shape, spacing=10, hex_wall=1, hex_spin=30, pattern_spin=0, clip_hexes=true, frame=0) 
 {
     shape2d = path2d(shape);
-    
-    // Common setup: create hex and calculate grid bounds
     hex = hexagon(id=spacing-hex_wall, spin=hex_spin);
-    bounds = pointlist_bounds(shape2d);
+    
+    // Calculate grid bounds including frame for proper centering
+    outer_shape = frame > 0 ? offset(shape2d, delta=frame) : shape2d;
+    bounds = pointlist_bounds(outer_shape);
     size = bounds[1] - bounds[0];
     center = (bounds[0] + bounds[1]) / 2;
     
-    // Generate positioned hex grid
-    hex_grid = move(center, p=rot(pattern_spin, p=grid_copies(spacing=spacing, size=size, stagger=true, p=hex)));
+    // Use diagonal size when rotated to ensure full coverage
+    grid_size = pattern_spin != 0 ? [1, 1] * norm(size) : size;
+    
+    // Generate hex grid: center first, then rotate around center point
+    hex_grid = rot(pattern_spin, cp=center, 
+                   p=move(center, 
+                          p=grid_copies(spacing=spacing, size=grid_size, stagger=true, p=hex)));
     
     if (clip_hexes) {
-        // Clip hexes at boundary
         difference(){
             polygon(shape2d);
             region(hex_grid);
         }
     } else {
-        // Filter to only full hexes
-        // Shrink boundary by hex extent (accounting for rotation) and frame
-        rotated_hex = rot(pattern_spin, p=hex);
-        hex_bounds = pointlist_bounds(rotated_hex);
-        max_extent = max(hex_bounds[1] - hex_bounds[0]) / 2;
+        // Filter to only include complete hexagons
+        combined_rotation = hex_spin + pattern_spin;
+        rotated_hex = hexagon(id=spacing-hex_wall, spin=combined_rotation);
+        max_extent = max(pointlist_bounds(rotated_hex)[1] - pointlist_bounds(rotated_hex)[0]) / 2;
         shrunk_boundary = offset(shape2d, delta=-(max_extent + frame));
         
         filtered_hexes = [
