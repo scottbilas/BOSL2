@@ -366,7 +366,7 @@ module hex_panel(
                  intersection() {
                      union() {
                          linear_extrude(height = ht, convexity=8) {
-                             _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes);
+                             _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes, frame = frame);
                              offset_stroke(shp, width=[-frame, 0], closed=true);
                          }
                          for (b = bevel) _bevelWall(shape, b, bevel_frame);
@@ -380,7 +380,7 @@ module hex_panel(
          attachable(anchor = anchor, spin = spin, orient = orient, size = shape) {        
              down(ht/2) 
                  linear_extrude(height = ht, convexity=8) {
-                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes);
+                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes, frame = frame);
                      offset_stroke(shp, width=[-frame, 0], closed=true);
                  }
              children();
@@ -395,7 +395,7 @@ module hex_panel(
          attachable(anchor = default(anchor,"zcenter"), spin = spin, orient = orient, path=shp, h=ht, cp=cp, extent=atype=="hull",anchors=anchors) {        
               down(ht/2) 
                  linear_extrude(height = ht, convexity=8) {
-                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes);
+                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes, frame = frame);
                      offset_stroke(shp, width=[-frame, 0], closed=true);
                  }
              children();
@@ -405,7 +405,7 @@ module hex_panel(
 }
 
 
-module _honeycomb(shape, spacing=10, hex_wall=1, hex_spin=30, pattern_spin=0, clip_hexes=true) 
+module _honeycomb(shape, spacing=10, hex_wall=1, hex_spin=30, pattern_spin=0, clip_hexes=true, frame=0) 
 {
     // Convert shape to 2D if needed (remove z coordinates)
     shape2d = path2d(shape);
@@ -430,11 +430,19 @@ module _honeycomb(shape, spacing=10, hex_wall=1, hex_spin=30, pattern_spin=0, cl
         size = bounds[1] - bounds[0];
         center = (bounds[0] + bounds[1]) / 2;
         
-        // Calculate hex radius (distance from center to vertex)
-        hex_radius = (spacing - hex_wall) / 2 / cos(30);
+        // Calculate the maximum distance from hex center to any vertex
+        // For a regular hexagon, this is the circumradius
+        hex_circumradius = (spacing - hex_wall) / 2 / cos(30);
         
-        // Shrink boundary inward by hex radius to ensure full hexes fit
-        shrunk_boundary = offset(shape2d, delta=-hex_radius);
+        // When pattern is rotated, we need to account for the hex's bounding box
+        // Generate a sample rotated hex to find its actual extent
+        sample_hex = rot(pattern_spin, p=hex);
+        sample_bounds = pointlist_bounds(sample_hex);
+        sample_size = sample_bounds[1] - sample_bounds[0];
+        max_extent = max(sample_size.x, sample_size.y) / 2;
+        
+        // Shrink boundary inward by max extent AND frame thickness
+        shrunk_boundary = offset(shape2d, delta=-(max_extent + frame));
         
         // Generate grid of hex positions
         hex_grid_raw = grid_copies(spacing=spacing, size=size, stagger=true, p=hex);
