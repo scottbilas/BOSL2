@@ -323,7 +323,8 @@ module hex_panel(
     orient = UP, cp="centroid", atype="hull",
     spin = 0,
     hex_spin = 30,
-    pattern_spin = 0) 
+    pattern_spin = 0,
+    clip_hexes = true) 
 {
     frame = first_defined([frame,strut]);
     bevel_frame = first_defined([bevel_frame, frame]);
@@ -365,7 +366,7 @@ module hex_panel(
                  intersection() {
                      union() {
                          linear_extrude(height = ht, convexity=8) {
-                             _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin);
+                             _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes);
                              offset_stroke(shp, width=[-frame, 0], closed=true);
                          }
                          for (b = bevel) _bevelWall(shape, b, bevel_frame);
@@ -379,7 +380,7 @@ module hex_panel(
          attachable(anchor = anchor, spin = spin, orient = orient, size = shape) {        
              down(ht/2) 
                  linear_extrude(height = ht, convexity=8) {
-                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin);
+                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes);
                      offset_stroke(shp, width=[-frame, 0], closed=true);
                  }
              children();
@@ -394,7 +395,7 @@ module hex_panel(
          attachable(anchor = default(anchor,"zcenter"), spin = spin, orient = orient, path=shp, h=ht, cp=cp, extent=atype=="hull",anchors=anchors) {        
               down(ht/2) 
                  linear_extrude(height = ht, convexity=8) {
-                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin);
+                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes);
                      offset_stroke(shp, width=[-frame, 0], closed=true);
                  }
              children();
@@ -404,20 +405,66 @@ module hex_panel(
 }
 
 
-module _honeycomb(shape, spacing=10, hex_wall=1, hex_spin=30, pattern_spin=0) 
+module _honeycomb(shape, spacing=10, hex_wall=1, hex_spin=30, pattern_spin=0, clip_hexes=true) 
 {
+    // Convert shape to 2D if needed (remove z coordinates)
+    shape2d = path2d(shape);
+    
+    if (clip_hexes) {
+        // Original behavior: clip hexes at boundary
         hex = hexagon(id=spacing-hex_wall, spin=hex_spin);
-        bounds = pointlist_bounds(shape);
+        bounds = pointlist_bounds(shape2d);
         size = bounds[1] - bounds[0];
         center = (bounds[0] + bounds[1]) / 2;
         hex_rgn2 = grid_copies(spacing=spacing, size=size, stagger=true, p=hex);
         hex_rgn_rotated = rot(pattern_spin, p=hex_rgn2);
         hex_rgn = move(center, p=hex_rgn_rotated);
         difference(){
-            polygon(shape);
+            polygon(shape2d);
             region(hex_rgn);
         }
+    } else {
+        // New behavior: only include full hexes that fit completely inside boundary
+        hex = hexagon(id=spacing-hex_wall, spin=hex_spin);
+        bounds = pointlist_bounds(shape2d);
+        size = bounds[1] - bounds[0];
+        center = (bounds[0] + bounds[1]) / 2;
+        
+        // Calculate hex radius (distance from center to vertex)
+        hex_radius = (spacing - hex_wall) / 2 / cos(30);
+        
+        // Shrink boundary inward by hex radius to ensure full hexes fit
+        shrunk_boundary = offset(shape2d, delta=-hex_radius);
+        
+        // Generate grid of hex positions
+        hex_grid_raw = grid_copies(spacing=spacing, size=size, stagger=true, p=hex);
+        hex_rgn_rotated = rot(pattern_spin, p=hex_grid_raw);
+        hex_rgn_centered = move(center, p=hex_rgn_rotated);
+        
+        // Filter: only keep hexes whose centers are inside the shrunk boundary
+        hex_grid_filtered = [
+            for (hex_path = hex_rgn_centered)
+                let(hex_center = mean(hex_path))
+                if (is_vector(hex_center, 2) && point_in_polygon(hex_center, shrunk_boundary) >= 0)
+                    hex_path
+        ];
+        
+        // Draw boundary with hex holes (only filtered hexes)
+        difference(){
+            polygon(shape2d);
+            for (hex_path = hex_grid_filtered) {
+                polygon(hex_path);
+            }
+        }
+    }
 }
+
+// Helper function to check if all points of a polygon are inside another polygon
+// Using > 0 (strictly inside) rather than >= 0 (inside or on boundary)
+function _all_points_inside_polygon(test_poly, boundary, eps=0.01) =
+    len(test_poly) > 2 && is_path(test_poly, 2) && is_path(boundary, 2) ?
+        all([for (pt = test_poly) point_in_polygon(pt, boundary, eps=eps) > 0])
+        : false;
 
 
 function _bevelSolid(shape, bevel) =
