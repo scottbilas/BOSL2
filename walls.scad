@@ -321,7 +321,9 @@ module hex_panel(
     bevel = [],
     anchor, 
     orient = UP, cp="centroid", atype="hull",
-    spin = 0) 
+    spin = 0,
+    hex_spin = 30,
+    pattern_spin = 0) 
 {
     frame = first_defined([frame,strut]);
     bevel_frame = first_defined([bevel_frame, frame]);
@@ -363,7 +365,7 @@ module hex_panel(
                  intersection() {
                      union() {
                          linear_extrude(height = ht, convexity=8) {
-                             _honeycomb(shp, spacing = spacing, hex_wall = strut);
+                             _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin);
                              offset_stroke(shp, width=[-frame, 0], closed=true);
                          }
                          for (b = bevel) _bevelWall(shape, b, bevel_frame);
@@ -377,7 +379,7 @@ module hex_panel(
          attachable(anchor = anchor, spin = spin, orient = orient, size = shape) {        
              down(ht/2) 
                  linear_extrude(height = ht, convexity=8) {
-                     _honeycomb(shp, spacing = spacing, hex_wall = strut);
+                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin);
                      offset_stroke(shp, width=[-frame, 0], closed=true);
                  }
              children();
@@ -392,7 +394,7 @@ module hex_panel(
          attachable(anchor = default(anchor,"zcenter"), spin = spin, orient = orient, path=shp, h=ht, cp=cp, extent=atype=="hull",anchors=anchors) {        
               down(ht/2) 
                  linear_extrude(height = ht, convexity=8) {
-                     _honeycomb(shp, spacing = spacing, hex_wall = strut);
+                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin);
                      offset_stroke(shp, width=[-frame, 0], closed=true);
                  }
              children();
@@ -402,14 +404,15 @@ module hex_panel(
 }
 
 
-module _honeycomb(shape, spacing=10, hex_wall=1) 
+module _honeycomb(shape, spacing=10, hex_wall=1, hex_spin=30, pattern_spin=0) 
 {
-        hex = hexagon(id=spacing-hex_wall, spin=180/6);
+        hex = hexagon(id=spacing-hex_wall, spin=hex_spin);
         bounds = pointlist_bounds(shape);
         size = bounds[1] - bounds[0];
-        hex_rgn2 = grid_copies(spacing=spacing, size=size, stagger=true, p=hex);
         center = (bounds[0] + bounds[1]) / 2;
-        hex_rgn = move(center, p=hex_rgn2);
+        hex_rgn2 = grid_copies(spacing=spacing, size=size, stagger=true, p=hex);
+        hex_rgn_rotated = rot(pattern_spin, p=hex_rgn2);
+        hex_rgn = move(center, p=hex_rgn_rotated);
         difference(){
             polygon(shape);
             region(hex_rgn);
