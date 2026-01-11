@@ -407,73 +407,43 @@ module hex_panel(
 
 module _honeycomb(shape, spacing=10, hex_wall=1, hex_spin=30, pattern_spin=0, clip_hexes=true, frame=0) 
 {
-    // Convert shape to 2D if needed (remove z coordinates)
     shape2d = path2d(shape);
     
+    // Common setup: create hex and calculate grid bounds
+    hex = hexagon(id=spacing-hex_wall, spin=hex_spin);
+    bounds = pointlist_bounds(shape2d);
+    size = bounds[1] - bounds[0];
+    center = (bounds[0] + bounds[1]) / 2;
+    
+    // Generate positioned hex grid
+    hex_grid = move(center, p=rot(pattern_spin, p=grid_copies(spacing=spacing, size=size, stagger=true, p=hex)));
+    
     if (clip_hexes) {
-        // Original behavior: clip hexes at boundary
-        hex = hexagon(id=spacing-hex_wall, spin=hex_spin);
-        bounds = pointlist_bounds(shape2d);
-        size = bounds[1] - bounds[0];
-        center = (bounds[0] + bounds[1]) / 2;
-        hex_rgn2 = grid_copies(spacing=spacing, size=size, stagger=true, p=hex);
-        hex_rgn_rotated = rot(pattern_spin, p=hex_rgn2);
-        hex_rgn = move(center, p=hex_rgn_rotated);
+        // Clip hexes at boundary
         difference(){
             polygon(shape2d);
-            region(hex_rgn);
+            region(hex_grid);
         }
     } else {
-        // New behavior: only include full hexes that fit completely inside boundary
-        hex = hexagon(id=spacing-hex_wall, spin=hex_spin);
-        bounds = pointlist_bounds(shape2d);
-        size = bounds[1] - bounds[0];
-        center = (bounds[0] + bounds[1]) / 2;
-        
-        // Calculate the maximum distance from hex center to any vertex
-        // For a regular hexagon, this is the circumradius
-        hex_circumradius = (spacing - hex_wall) / 2 / cos(30);
-        
-        // When pattern is rotated, we need to account for the hex's bounding box
-        // Generate a sample rotated hex to find its actual extent
-        sample_hex = rot(pattern_spin, p=hex);
-        sample_bounds = pointlist_bounds(sample_hex);
-        sample_size = sample_bounds[1] - sample_bounds[0];
-        max_extent = max(sample_size.x, sample_size.y) / 2;
-        
-        // Shrink boundary inward by max extent AND frame thickness
+        // Filter to only full hexes
+        // Shrink boundary by hex extent (accounting for rotation) and frame
+        rotated_hex = rot(pattern_spin, p=hex);
+        hex_bounds = pointlist_bounds(rotated_hex);
+        max_extent = max(hex_bounds[1] - hex_bounds[0]) / 2;
         shrunk_boundary = offset(shape2d, delta=-(max_extent + frame));
         
-        // Generate grid of hex positions
-        hex_grid_raw = grid_copies(spacing=spacing, size=size, stagger=true, p=hex);
-        hex_rgn_rotated = rot(pattern_spin, p=hex_grid_raw);
-        hex_rgn_centered = move(center, p=hex_rgn_rotated);
-        
-        // Filter: only keep hexes whose centers are inside the shrunk boundary
-        hex_grid_filtered = [
-            for (hex_path = hex_rgn_centered)
-                let(hex_center = mean(hex_path))
-                if (is_vector(hex_center, 2) && point_in_polygon(hex_center, shrunk_boundary) >= 0)
+        filtered_hexes = [
+            for (hex_path = hex_grid)
+                if (point_in_polygon(mean(hex_path), shrunk_boundary) >= 0)
                     hex_path
         ];
         
-        // Draw boundary with hex holes (only filtered hexes)
         difference(){
             polygon(shape2d);
-            for (hex_path = hex_grid_filtered) {
-                polygon(hex_path);
-            }
+            for (hex_path = filtered_hexes) polygon(hex_path);
         }
     }
 }
-
-// Helper function to check if all points of a polygon are inside another polygon
-// Using > 0 (strictly inside) rather than >= 0 (inside or on boundary)
-function _all_points_inside_polygon(test_poly, boundary, eps=0.01) =
-    len(test_poly) > 2 && is_path(test_poly, 2) && is_path(boundary, 2) ?
-        all([for (pt = test_poly) point_in_polygon(pt, boundary, eps=eps) > 0])
-        : false;
-
 
 function _bevelSolid(shape, bevel) =
   let(
