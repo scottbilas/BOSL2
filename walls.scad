@@ -351,8 +351,10 @@ module hex_panel(
     
     bounds = pointlist_bounds(shp);
     sizes = bounds[1] - bounds[0]; // [xsize, ysize]
-    assert(frame*2 + spacing < sizes[0], "There must be room for at least 1 cell in the honeycomb");
-    assert(frame*2 + spacing < sizes[1], "There must be room for at least 1 cell in the honeycomb");
+    
+    // Check if frame is too large for the shape (would cause degenerate offset)
+    min_size = min(sizes[0], sizes[1]);
+    frame_fits = frame * 2 < min_size;
 
     bevpaths = len(bevel)==0 ? []
              : _bevelSolid(shape,bevel);
@@ -366,8 +368,12 @@ module hex_panel(
                  intersection() {
                      union() {
                          linear_extrude(height = ht, convexity=8) {
-                             _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes, frame = frame);
-                             offset_stroke(shp, width=[-frame, 0], closed=true);
+                             if (frame_fits) {
+                                 _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes, frame = frame);
+                                 offset_stroke(shp, width=[-frame, 0], closed=true);
+                             } else {
+                                 polygon(shp);
+                             }
                          }
                          for (b = bevel) _bevelWall(shape, b, bevel_frame);
                      }
@@ -380,8 +386,12 @@ module hex_panel(
          attachable(anchor = anchor, spin = spin, orient = orient, size = shape) {        
              down(ht/2) 
                  linear_extrude(height = ht, convexity=8) {
-                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes, frame = frame);
-                     offset_stroke(shp, width=[-frame, 0], closed=true);
+                     if (frame_fits) {
+                         _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes, frame = frame);
+                         offset_stroke(shp, width=[-frame, 0], closed=true);
+                     } else {
+                         polygon(shp);
+                     }
                  }
              children();
          }
@@ -395,8 +405,12 @@ module hex_panel(
          attachable(anchor = default(anchor,"zcenter"), spin = spin, orient = orient, path=shp, h=ht, cp=cp, extent=atype=="hull",anchors=anchors) {        
               down(ht/2) 
                  linear_extrude(height = ht, convexity=8) {
-                     _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes, frame = frame);
-                     offset_stroke(shp, width=[-frame, 0], closed=true);
+                     if (frame_fits) {
+                         _honeycomb(shp, spacing = spacing, hex_wall = strut, hex_spin = hex_spin, pattern_spin = pattern_spin, clip_hexes = clip_hexes, frame = frame);
+                         offset_stroke(shp, width=[-frame, 0], closed=true);
+                     } else {
+                         polygon(shp);
+                     }
                  }
              children();
          }
